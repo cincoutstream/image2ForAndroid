@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Image2ForAndroid",
+    "slug": "image2-for-android",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "android": {
+      "package": "com.pageplug.image2forandroid",
+      "permissions": [
+        "READ_MEDIA_IMAGES",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "选择参考图片用于 AI 作图。"
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "保存生成图片到系统相册。",
+          "savePhotosPermission": "保存生成图片到系统相册。"
+        }
+      ]
+    ]
+  }
+}

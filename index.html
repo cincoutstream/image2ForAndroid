@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Image2 API 请求测试器</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0f14;
+        --panel: rgba(17, 24, 34, 0.88);
+        --panel-strong: #131c28;
+        --text: #edf4ff;
+        --muted: #8fa2ba;
+        --line: rgba(142, 163, 190, 0.2);
+        --accent: #7ee787;
+        --accent-2: #58a6ff;
+        --danger: #ff7b72;
+        --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at 20% 0%, rgba(88, 166, 255, 0.22), transparent 34rem),
+          radial-gradient(circle at 84% 10%, rgba(126, 231, 135, 0.16), transparent 30rem),
+          linear-gradient(135deg, #06090f 0%, var(--bg) 55%, #101820 100%);
+        color: var(--text);
+        font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+      }
+
+      main {
+        width: min(1180px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 48px 0;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 24px;
+        align-items: end;
+        margin-bottom: 24px;
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: clamp(36px, 7vw, 84px);
+        line-height: 0.92;
+        letter-spacing: -0.07em;
+      }
+
+      .subtitle {
+        max-width: 720px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 17px;
+        line-height: 1.7;
+      }
+
+      .notice {
+        border: 1px solid rgba(126, 231, 135, 0.28);
+        border-radius: 24px;
+        padding: 18px;
+        background: rgba(126, 231, 135, 0.08);
+        color: #cfffd4;
+        line-height: 1.6;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 420px 1fr;
+        gap: 24px;
+      }
+
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(18px);
+      }
+
+      form,
+      .result-panel {
+        padding: 24px;
+      }
+
+      label {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 16px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      input,
+      textarea,
+      select {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--panel-strong);
+        color: var(--text);
+        padding: 13px 14px;
+        font: inherit;
+        outline: none;
+      }
+
+      textarea {
+        min-height: 110px;
+        resize: vertical;
+      }
+
+      input:focus,
+      textarea:focus,
+      select:focus {
+        border-color: rgba(88, 166, 255, 0.85);
+        box-shadow: 0 0 0 4px rgba(88, 166, 255, 0.13);
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      button {
+        width: 100%;
+        border: 0;
+        border-radius: 18px;
+        padding: 15px 18px;
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        color: #061018;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      button:disabled {
+        cursor: wait;
+        filter: grayscale(0.5);
+        opacity: 0.7;
+      }
+
+      .status {
+        margin: 0 0 18px;
+        padding: 14px 16px;
+        border-radius: 16px;
+        background: rgba(88, 166, 255, 0.1);
+        color: #c9e2ff;
+      }
+
+      .status.error {
+        background: rgba(255, 123, 114, 0.12);
+        color: #ffd2ce;
+      }
+
+      .preview {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+        margin-bottom: 18px;
+      }
+
+      .preview img {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: #05070a;
+      }
+
+      details {
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: rgba(5, 8, 12, 0.42);
+        margin-top: 14px;
+        overflow: hidden;
+      }
+
+      summary {
+        cursor: pointer;
+        padding: 14px 16px;
+        color: var(--accent);
+        font-weight: 700;
+      }
+
+      pre {
+        margin: 0;
+        padding: 0 16px 16px;
+        overflow: auto;
+        color: #d8e8ff;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      @media (max-width: 900px) {
+        .hero,
+        .grid,
+        .row {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <div>
+          <h1>Image2 API Lab</h1>
+          <p class="subtitle">
+            本地请求测试页：填入中转站地址、API Key、模型名和 prompt，验证文生图接口的请求体、鉴权方式和响应结构。
+          </p>
+        </div>
+        <div class="notice">
+          如果浏览器提示 CORS 错误，说明中转站不允许网页跨域直连。页面会生成等价 curl 命令，可先用终端验证接口。
+        </div>
+      </section>
+
+      <section class="grid">
+        <form class="card" id="testerForm">
+          <label>
+            Base URL
+            <input id="baseUrl" value="https://www.micuapi.ai/v1" autocomplete="off" />
+          </label>
+
+          <label>
+            Endpoint
+            <input id="endpoint" value="/images/generations" autocomplete="off" />
+          </label>
+
+          <label>
+            API Key
+            <input id="apiKey" type="password" placeholder="sk-..." autocomplete="off" />
+          </label>
+
+          <div class="row">
+            <label>
+              Model
+              <input id="model" value="image2" autocomplete="off" />
+            </label>
+
+            <label>
+              Size
+              <select id="size">
+                <option>1024x1024</option>
+                <option>1024x1792</option>
+                <option>1792x1024</option>
+                <option>512x512</option>
+              </select>
+            </label>
+          </div>
+
+          <label>
+            Response Format
+            <select id="responseFormat">
+              <option value="url">url</option>
+              <option value="b64_json">b64_json</option>
+            </select>
+          </label>
+
+          <label>
+            请求实验模式
+            <select id="experimentMode">
+              <option value="json">文生图 JSON：不传参考图</option>
+              <option value="chat_messages">图生图 Chat Messages：content text + image_url data URL</option>
+              <option value="multipart">图生图 Multipart：image 文件字段</option>
+              <option value="json_base64">图生图 JSON：input_images[].b64_json</option>
+              <option value="json_image_urls">图生图 JSON：input_images[].url（仅用于观察，不推荐）</option>
+            </select>
+          </label>
+
+          <label>
+            参考图文件（可多选）
+            <input id="imageFiles" type="file" accept="image/png,image/jpeg,image/webp" multiple />
+          </label>
+
+          <label>
+            Prompt
+            <textarea id="prompt">一只穿着宇航服的橘猫，站在月球表面，电影感光照</textarea>
+          </label>
+
+          <button id="submitButton" type="submit">发送请求并解析响应</button>
+        </form>
+
+        <div class="card result-panel">
+          <p class="status" id="statusText">等待请求。先填入 API Key，然后点击发送。</p>
+          <div class="preview" id="imagePreview"></div>
+
+          <details open>
+            <summary>请求预览</summary>
+            <pre id="requestPreview">{}</pre>
+          </details>
+
+          <details open>
+            <summary>响应原文</summary>
+            <pre id="responsePreview">{}</pre>
+          </details>
+
+          <details>
+            <summary>等价 curl（已脱敏 Key）</summary>
+            <pre id="curlPreview"></pre>
+          </details>
+        </div>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+    <script>
+      const form = document.querySelector("#testerForm");
+      const submitButton = document.querySelector("#submitButton");
+      const statusText = document.querySelector("#statusText");
+      const requestPreview = document.querySelector("#requestPreview");
+      const responsePreview = document.querySelector("#responsePreview");
+      const curlPreview = document.querySelector("#curlPreview");
+      const imagePreview = document.querySelector("#imagePreview");
+
+      function readFormData() {
+        return {
+          baseUrl: document.querySelector("#baseUrl").value,
+          endpoint: document.querySelector("#endpoint").value,
+          apiKey: document.querySelector("#apiKey").value,
+          model: document.querySelector("#model").value,
+          size: document.querySelector("#size").value,
+          responseFormat: document.querySelector("#responseFormat").value,
+          experimentMode: document.querySelector("#experimentMode").value,
+          imageFiles: document.querySelector("#imageFiles").files,
+          prompt: document.querySelector("#prompt").value,
+        };
+      }
+
+      function renderImages(results) {
+        imagePreview.innerHTML = "";
+
+        for (const result of results) {
+          const img = document.createElement("img");
+          img.alt = "生成结果";
+          img.src =
+            result.type === "base64"
+              ? `data:image/png;base64,${result.value}`
+              : result.value;
+          imagePreview.append(img);
+        }
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        statusText.classList.remove("error");
+        statusText.textContent = "请求中...";
+        submitButton.disabled = true;
+
+        const formData = readFormData();
+        const request =
+          await ImageApiTester.buildImageExperimentRequest(formData);
+        requestPreview.textContent = JSON.stringify(
+          ImageApiTester.toDisplayRequest(request, formData.apiKey),
+          null,
+          2,
+        );
+        curlPreview.textContent = ImageApiTester.buildCurlCommand(
+          request,
+          formData.apiKey,
+        );
+
+        try {
+          const result = await ImageApiTester.sendImageGenerationRequest(formData);
+          responsePreview.textContent = JSON.stringify(result.responseBody, null, 2);
+          renderImages(result.imageResults);
+
+          statusText.textContent = result.ok
+            ? `请求成功：HTTP ${result.status}，解析到 ${result.imageResults.length} 张图片。`
+            : `请求失败：HTTP ${result.status} ${result.statusText}`;
+          statusText.classList.toggle("error", !result.ok);
+        } catch (error) {
+          responsePreview.textContent = String(error?.stack || error);
+          statusText.textContent =
+            "请求被浏览器拦截或网络失败。常见原因是 CORS 限制，可复制 curl 到终端继续验证。";
+          statusText.classList.add("error");
+          imagePreview.innerHTML = "";
+        } finally {
+          submitButton.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
