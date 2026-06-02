@@ -1,0 +1,2 @@
+# image2ForAndroid
+做一个用来调用image2来进行AI作图的软件
