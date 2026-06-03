@@ -2,43 +2,85 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildImageGenerationRequest,
-  buildOrderedImageParts,
+  extractApiErrorMessage,
   extractImageResults,
   joinUrl,
+  resolveGenerationEndpoint,
 } from "./openAiImageProvider";
 
+const baseProvider = {
+  baseUrl: "https://www.micuapi.ai/v1",
+  endpoint: "/images/generations",
+  referenceEndpoint: "/chat/completions",
+  model: "gpt-image-2-pro",
+  size: "1024x1024",
+  responseFormat: "url" as const,
+  imageInputMode: "chat_messages" as const,
+  group: "vip_2_image",
+  stream: true,
+};
+
 describe("OpenAI-compatible image provider", () => {
-  it("joins base url and endpoint without duplicate slashes", () => {
+  it("joins baseUrl and endpoint without changing the configured path", () => {
     expect(joinUrl("https://www.micuapi.ai/v1/", "/images/generations")).toBe(
       "https://www.micuapi.ai/v1/images/generations",
     );
+    expect(joinUrl("https://www.micuapi.ai/v1", "/chat/completions")).toBe(
+      "https://www.micuapi.ai/v1/chat/completions",
+    );
+    expect(joinUrl("https://www.micuapi.ai/v1", "/pg/chat/completions")).toBe(
+      "https://www.micuapi.ai/v1/pg/chat/completions",
+    );
   });
 
-  it("builds a text-to-image request body", () => {
+  it("falls back when referenceEndpoint is missing on legacy config", () => {
+    const legacyProvider = {
+      ...baseProvider,
+      referenceEndpoint: undefined as unknown as string,
+    };
+
+    expect(
+      buildImageGenerationRequest({
+        provider: legacyProvider,
+        apiKey: "sk-test",
+        prompt: "改色",
+        inputImages: [
+          {
+            index: 1,
+            localUri: "file:///a.png",
+            mimeType: "image/png",
+            base64Data: "ZmFrZQ==",
+          },
+        ],
+      }).url,
+    ).toBe("https://www.micuapi.ai/v1/chat/completions");
+  });
+
+  it("resolves endpoint from provider config", () => {
+    expect(resolveGenerationEndpoint(baseProvider, [])).toBe("/images/generations");
+    expect(
+      resolveGenerationEndpoint(baseProvider, [
+        {
+          index: 1,
+          localUri: "file:///role.png",
+          mimeType: "image/png",
+        },
+      ]),
+    ).toBe("/chat/completions");
+  });
+
+  it("builds a text-to-image request using configured endpoint", () => {
     const request = buildImageGenerationRequest({
-      provider: {
-        baseUrl: "https://www.micuapi.ai/v1",
-        endpoint: "/images/generations",
-        model: "image2",
-        size: "1024x1024",
-        responseFormat: "url",
-        imageInputMode: "json_base64",
-        group: "vip_2_image",
-        stream: false,
-      },
+      provider: baseProvider,
       apiKey: "sk-test",
       prompt: "一只穿宇航服的橘猫",
       inputImages: [],
     });
 
     expect(request.url).toBe("https://www.micuapi.ai/v1/images/generations");
-    expect(request.init.method).toBe("POST");
-    expect(request.init.headers).toMatchObject({
-      "Content-Type": "application/json",
-      Authorization: "Bearer sk-test",
-    });
-    expect(JSON.parse(String(request.init.body))).toEqual({
-      model: "image2",
+    expect(request.debug.requestMode).toBe("images_generations");
+    expect(JSON.parse(String(request.init.body))).toMatchObject({
+      model: "gpt-image-2-pro",
       prompt: "一只穿宇航服的橘猫",
       size: "1024x1024",
       n: 1,
@@ -46,18 +88,9 @@ describe("OpenAI-compatible image provider", () => {
     });
   });
 
-  it("builds chat messages request with data image url references", () => {
+  it("builds chat request using configured reference endpoint", () => {
     const request = buildImageGenerationRequest({
-      provider: {
-        baseUrl: "https://www.micuapi.ai/v1",
-        endpoint: "/chat/completions",
-        model: "gpt-image-2-pro",
-        size: "1024x1024",
-        responseFormat: "url",
-        imageInputMode: "chat_messages",
-        group: "vip_2_image",
-        stream: true,
-      },
+      provider: baseProvider,
       apiKey: "sk-test",
       prompt: "衣服改成紫色",
       inputImages: [
@@ -94,93 +127,32 @@ describe("OpenAI-compatible image provider", () => {
     });
   });
 
-  it("builds multipart request when reference images are selected", () => {
+  it("supports custom /pg/chat/completions when configured", () => {
     const request = buildImageGenerationRequest({
       provider: {
-        baseUrl: "https://www.micuapi.ai/v1",
-        endpoint: "/images/generations",
-        model: "image2",
-        size: "1024x1024",
-        responseFormat: "b64_json",
-        imageInputMode: "multipart",
-        group: "vip_2_image",
-        stream: false,
+        ...baseProvider,
+        baseUrl: "https://gateway.example.com",
+        referenceEndpoint: "/pg/chat/completions",
       },
       apiKey: "sk-test",
-      prompt: "第一张图作为角色，第二张图作为背景",
+      prompt: "改色",
       inputImages: [
         {
           index: 1,
-          localUri: "file:///role.png",
+          localUri: "file:///a.png",
           mimeType: "image/png",
-          displayName: "role.png",
+          base64Data: "ZmFrZQ==",
         },
       ],
     });
 
-    expect(request.init.headers).toMatchObject({
-      Authorization: "Bearer sk-test",
-    });
-    expect(request.init.headers).not.toHaveProperty("Content-Type");
-    expect(request.debug.requestMode).toBe("multipart");
-    expect(request.debug.imageCount).toBe(1);
+    expect(request.url).toBe("https://gateway.example.com/pg/chat/completions");
   });
 
-  it("builds json base64 request when selected by provider config", () => {
-    const request = buildImageGenerationRequest({
-      provider: {
-        baseUrl: "https://www.micuapi.ai/v1",
-        endpoint: "/images/generations",
-        model: "gpt-image-2",
-        size: "1024x1024",
-        responseFormat: "url",
-        imageInputMode: "json_base64",
-        group: "vip_2_image",
-        stream: false,
-      },
-      apiKey: "sk-test",
-      prompt: "参考第一张图生成",
-      inputImages: [
-        {
-          index: 1,
-          localUri: "file:///role.png",
-          mimeType: "image/png",
-          displayName: "role.png",
-          base64Data: "ZmFrZS1pbWFnZQ==",
-        },
-      ],
-    });
-
-    expect(request.debug.requestMode).toBe("json_base64");
-    expect(request.init.headers).toMatchObject({
-      "Content-Type": "application/json",
-      Authorization: "Bearer sk-test",
-    });
-    expect(JSON.parse(String(request.init.body))).toMatchObject({
-      input_images: [
-        {
-          index: 1,
-          b64_json: "ZmFrZS1pbWFnZQ==",
-          mime_type: "image/png",
-          display_name: "role.png",
-        },
-      ],
-    });
-  });
-
-  it("rejects json base64 image requests when image content is missing", () => {
+  it("rejects chat image requests when image content is missing", () => {
     expect(() =>
       buildImageGenerationRequest({
-        provider: {
-          baseUrl: "https://www.micuapi.ai/v1",
-          endpoint: "/images/generations",
-          model: "gpt-image-2",
-          size: "1024x1024",
-          responseFormat: "url",
-          imageInputMode: "json_base64",
-          group: "vip_2_image",
-          stream: false,
-        },
+        provider: baseProvider,
         apiKey: "sk-test",
         prompt: "参考第一张图生成",
         inputImages: [
@@ -195,78 +167,23 @@ describe("OpenAI-compatible image provider", () => {
     ).toThrow("没有读取到图片内容");
   });
 
-  it("keeps multipart image order by input index", () => {
+  it("extracts gateway error messages", () => {
     expect(
-      buildOrderedImageParts([
-        {
-          index: 2,
-          localUri: "file:///background.webp",
-          mimeType: "image/webp",
-          displayName: "background.webp",
-        },
-        {
-          index: 1,
-          localUri: "file:///role.png",
-          mimeType: "image/png",
-          displayName: "role.png",
-        },
-      ]),
-    ).toEqual([
-        {
-          fieldName: "image",
-          index: 1,
-          uri: "file:///role.png",
-          name: "role.png",
-          type: "image/png",
-        },
-        {
-          fieldName: "image",
-          index: 2,
-          uri: "file:///background.webp",
-          name: "background.webp",
-          type: "image/webp",
-        },
-      ]);
-  });
-
-  it("adds image order metadata for model-side debugging", () => {
-    const request = buildImageGenerationRequest({
-      provider: {
-        baseUrl: "https://www.micuapi.ai/v1",
-        endpoint: "/images/generations",
-        model: "image2",
-        size: "1024x1024",
-        responseFormat: "b64_json",
-        imageInputMode: "multipart",
-        group: "vip_2_image",
-        stream: false,
-      },
-      apiKey: "sk-test",
-      prompt: "第一张图作为角色，第二张图作为背景",
-      inputImages: [
-        {
-          index: 2,
-          localUri: "file:///background.webp",
-          mimeType: "image/webp",
-          displayName: "background.webp",
-        },
-      ],
-    });
-
-    expect(request.debug.imageOrder).toEqual(["图 2: background.webp"]);
+      extractApiErrorMessage({
+        success: false,
+        message: "Unauthorized, invalid access token",
+      }),
+    ).toBe("Unauthorized, invalid access token");
   });
 
   it("extracts url and base64 image results", () => {
-    const response = {
-      data: [
-        { url: "https://example.com/a.png" },
-        { b64_json: "YmFzZTY0" },
-        { ignored: true },
-      ],
-    };
-
     expect(
-      extractImageResults(response as Parameters<typeof extractImageResults>[0]),
+      extractImageResults({
+        data: [
+          { url: "https://example.com/a.png" },
+          { b64_json: "YmFzZTY0" },
+        ],
+      }),
     ).toEqual([
       { type: "url", value: "https://example.com/a.png" },
       { type: "base64", value: "YmFzZTY0" },

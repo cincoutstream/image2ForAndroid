@@ -7,7 +7,10 @@ import { getApiKey } from "../security/credentialStore";
 import { exportImageToLibrary } from "../storage/imageStorage";
 import { listHistoryItems } from "../storage/historyStore";
 import { useAppStore } from "../store/useAppStore";
-import { runGenerationTask } from "../tasks/generationTaskManager";
+import {
+  cancelActiveGeneration,
+  runGenerationTask,
+} from "../tasks/generationTaskManager";
 import type { ImageInput, SavedProviderConfig, SupportedImageMimeType } from "../types";
 import { commonImageSizes } from "../types";
 import {
@@ -20,7 +23,7 @@ import {
 } from "./components";
 
 function toSupportedMimeType(value?: string | null): SupportedImageMimeType | null {
-  if (value === "image/png" || value === "image/jpeg" || value === "image/webp") {
+  if (value === "image/png" || value === "image/jpeg") {
     return value;
   }
   return null;
@@ -36,6 +39,9 @@ function reindexImages(images: ImageInput[]): ImageInput[] {
 export function GenerateScreen() {
   const provider = useAppStore((state) => state.provider);
   const providerConfigs = useAppStore((state) => state.providerConfigs);
+  const activeProviderConfigId = useAppStore(
+    (state) => state.activeProviderConfigId,
+  );
   const prompt = useAppStore((state) => state.prompt);
   const inputImages = useAppStore((state) => state.inputImages);
   const outputImages = useAppStore((state) => state.outputImages);
@@ -44,6 +50,9 @@ export function GenerateScreen() {
   const debugLogs = useAppStore((state) => state.debugLogs);
   const setPrompt = useAppStore((state) => state.setPrompt);
   const setProvider = useAppStore((state) => state.setProvider);
+  const setActiveProviderConfigId = useAppStore(
+    (state) => state.setActiveProviderConfigId,
+  );
   const setInputImages = useAppStore((state) => state.setInputImages);
   const setOutputImages = useAppStore((state) => state.setOutputImages);
   const setHistoryItems = useAppStore((state) => state.setHistoryItems);
@@ -55,6 +64,7 @@ export function GenerateScreen() {
 
   function selectProviderConfig(config: SavedProviderConfig) {
     setProvider(config);
+    setActiveProviderConfigId(config.id);
     appendDebugLog(
       `已切换模型配置：${config.name} / ${config.model} / ${config.size}`,
     );
@@ -79,7 +89,7 @@ export function GenerateScreen() {
     for (const [assetIndex, asset] of result.assets.entries()) {
       const mimeType = toSupportedMimeType(asset.mimeType);
       if (!mimeType) {
-        setErrorMessage("第一版只支持 PNG、JPG/JPEG、WEBP 图片。");
+        setErrorMessage("当前接口只支持 PNG、JPG/JPEG 参考图。");
         return;
       }
 
@@ -173,6 +183,7 @@ export function GenerateScreen() {
       model: provider.model,
       size: provider.size,
       endpoint: provider.endpoint,
+      referenceEndpoint: provider.referenceEndpoint,
       imageInputMode: provider.imageInputMode,
       prompt,
       imageCount: inputImages.length,
@@ -189,11 +200,18 @@ export function GenerateScreen() {
       setErrorMessage(historyItem.errorMessage);
       appendDebugLog(`生成失败：${historyItem.errorMessage ?? "未知错误"}`);
     } else {
-      appendDebugLog("请求已被新的生成任务取消。");
+      appendDebugLog("请求已取消或被新的生成任务替换。");
     }
 
     setHistoryItems(await listHistoryItems());
     setIsGenerating(false);
+  }
+
+  function interruptGeneration() {
+    cancelActiveGeneration();
+    setIsGenerating(false);
+    setErrorMessage("请求已中断。");
+    appendDebugLog("用户手动中断请求");
   }
 
   return (
@@ -204,10 +222,7 @@ export function GenerateScreen() {
             <Text style={styles.sectionTitle}>模型配置</Text>
             <View style={styles.configPills}>
               {providerConfigs.map((config) => {
-                const active =
-                  config.model === provider.model &&
-                  config.baseUrl === provider.baseUrl &&
-                  config.endpoint === provider.endpoint;
+                const active = config.id === activeProviderConfigId;
                 return (
                   <Pressable
                     key={config.id}
@@ -282,6 +297,10 @@ export function GenerateScreen() {
           loading={isGenerating}
         />
 
+        {isGenerating && (
+          <PrimaryButton label="中断请求" onPress={interruptGeneration} />
+        )}
+
         <Message text={errorMessage} tone="error" />
 
         {outputImages.length > 0 && (
@@ -302,6 +321,9 @@ export function GenerateScreen() {
         {debugLogs.length > 0 && (
           <View style={styles.debugPanel}>
             <Text style={styles.sectionTitle}>调试日志</Text>
+            <Text selectable style={styles.debugHint}>
+              电脑终端会同步打印同一份日志；App 内可长按日志文本选择复制。
+            </Text>
             {debugLogs.map((log) => {
               const expanded = expandedLogIds.includes(log.id);
               return (
@@ -316,11 +338,11 @@ export function GenerateScreen() {
                   }
                   style={styles.debugEntry}
                 >
-                  <Text style={styles.debugLine}>
+                  <Text selectable style={styles.debugLine}>
                     {log.createdAt} {log.summary}
                   </Text>
                   {expanded && log.details && (
-                    <Text style={styles.debugDetails}>{log.details}</Text>
+                    <Text selectable style={styles.debugDetails}>{log.details}</Text>
                   )}
                 </Pressable>
               );
@@ -452,6 +474,11 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   debugLine: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  debugHint: {
     color: colors.muted,
     fontSize: 12,
     lineHeight: 18,

@@ -7,7 +7,7 @@ const {
   extractImageResults,
 } = require("./app.js");
 
-test("joinUrl combines baseUrl and endpoint without duplicate slashes", () => {
+test("joinUrl combines baseUrl and endpoint", () => {
   assert.equal(
     joinUrl("https://www.micuapi.ai/v1/", "/images/generations"),
     "https://www.micuapi.ai/v1/images/generations",

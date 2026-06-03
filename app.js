@@ -38,6 +38,7 @@
   async function buildImageExperimentRequest({
     baseUrl,
     endpoint,
+    referenceEndpoint,
     apiKey,
     model,
     prompt,
@@ -46,59 +47,13 @@
     experimentMode,
     imageFiles,
   }) {
-    const url = joinUrl(baseUrl, endpoint || "/images/generations");
-    const mode = experimentMode || "json";
     const files = Array.from(imageFiles || []);
-
-    if (mode === "multipart") {
-      const body = new FormData();
-      body.append("model", String(model || "").trim());
-      body.append("prompt", String(prompt || "").trim());
-      body.append("size", String(size || "1024x1024").trim());
-      body.append("n", "1");
-      body.append("response_format", String(responseFormat || "url").trim());
-      body.append(
-        "image_order",
-        JSON.stringify(
-          files.map((file, index) => ({
-            index: index + 1,
-            name: file.name,
-            type: file.type,
-          })),
-        ),
-      );
-      for (const file of files) {
-        body.append("image", file, file.name);
-      }
-
-      return {
-        url,
-        options: {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${String(apiKey || "").trim()}`,
-          },
-          body,
-        },
-        displayBody: {
-          mode,
-          fields: {
-            model,
-            prompt,
-            size,
-            n: 1,
-            response_format: responseFormat,
-          },
-          files: files.map((file, index) => ({
-            field: "image",
-            index: index + 1,
-            name: file.name,
-            type: file.type,
-            size: file.size,
-          })),
-        },
-      };
-    }
+    const resolvedEndpoint =
+      files.length > 0
+        ? referenceEndpoint || "/chat/completions"
+        : endpoint || "/images/generations";
+    const url = joinUrl(baseUrl, resolvedEndpoint);
+    const mode = files.length > 0 ? "chat_messages" : "images_generations";
 
     if (mode === "chat_messages") {
       const imageParts = await Promise.all(
@@ -152,26 +107,6 @@
       n: 1,
       response_format: String(responseFormat || "url").trim(),
     };
-
-    if (mode === "json_image_urls") {
-      body.input_images = files.map((file, index) => ({
-        index: index + 1,
-        url: URL.createObjectURL(file),
-        name: file.name,
-        mime_type: file.type,
-      }));
-    }
-
-    if (mode === "json_base64") {
-      body.input_images = await Promise.all(
-        files.map(async (file, index) => ({
-          index: index + 1,
-          b64_json: await fileToBase64(file),
-          name: file.name,
-          mime_type: file.type,
-        })),
-      );
-    }
 
     return {
       url,
@@ -238,20 +173,6 @@
 
   function buildCurlCommand(request, apiKey) {
     const masked = maskApiKey(apiKey);
-    const isMultipart =
-      typeof FormData !== "undefined" && request.options.body instanceof FormData;
-    if (isMultipart) {
-      return [
-        `curl -X POST "${request.url}"`,
-        `  -H "Authorization: Bearer ${masked}"`,
-        `  -F "model=<model>"`,
-        `  -F "prompt=<prompt>"`,
-        `  -F "size=<size>"`,
-        `  -F "response_format=<url|b64_json>"`,
-        `  -F "image=@/path/to/reference.png"`,
-      ].join(" \\\n");
-    }
-
     return [
       `curl -X POST "${request.url}"`,
       `  -H "Content-Type: application/json"`,
@@ -261,8 +182,6 @@
   }
 
   function toDisplayRequest(request, apiKey) {
-    const isMultipart =
-      typeof FormData !== "undefined" && request.options.body instanceof FormData;
     return {
       url: request.url,
       options: {
@@ -271,9 +190,7 @@
           ...request.options.headers,
           Authorization: `Bearer ${maskApiKey(apiKey)}`,
         },
-        body: isMultipart
-          ? request.displayBody || "multipart/form-data"
-          : JSON.parse(request.options.body),
+        body: request.displayBody || JSON.parse(request.options.body),
       },
     };
   }

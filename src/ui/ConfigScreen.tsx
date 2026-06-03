@@ -14,7 +14,6 @@ import {
   commonImageSizes,
   commonModelNames,
   defaultProviderConfig,
-  type ImageInputMode,
   type ResponseFormat,
   type SavedProviderConfig,
 } from "../types";
@@ -28,16 +27,17 @@ import {
 } from "./components";
 
 const responseFormatOptions: ResponseFormat[] = ["url", "b64_json"];
-const imageInputModeOptions: ImageInputMode[] = [
-  "chat_messages",
-  "json_base64",
-  "multipart",
-];
 const streamOptions = ["true", "false"] as const;
 
 export function ConfigScreen() {
   const providerConfigs = useAppStore((state) => state.providerConfigs);
+  const activeProviderConfigId = useAppStore(
+    (state) => state.activeProviderConfigId,
+  );
   const setProvider = useAppStore((state) => state.setProvider);
+  const setActiveProviderConfigId = useAppStore(
+    (state) => state.setActiveProviderConfigId,
+  );
   const setProviderConfigs = useAppStore((state) => state.setProviderConfigs);
   const [draftProvider, setDraftProvider] = useState(defaultProviderConfig);
   const [apiKey, setApiKey] = useState("");
@@ -104,6 +104,7 @@ export function ConfigScreen() {
     ]);
     setProviderConfigs(nextConfigs);
     setProvider(savedConfig);
+    setActiveProviderConfigId(savedConfig.id);
     setStatus(
       existingIndex >= 0
         ? `已更新配置：${savedConfig.name}`
@@ -119,6 +120,7 @@ export function ConfigScreen() {
 
   async function selectConfig(config: SavedProviderConfig) {
     setProvider(config);
+    setActiveProviderConfigId(config.id);
     await saveProviderConfig(config);
     setStatus(`当前使用配置：${config.name}`);
   }
@@ -143,6 +145,14 @@ export function ConfigScreen() {
     const nextConfigs = providerConfigs.filter((config) => config.id !== configId);
     await saveProviderConfigs(nextConfigs);
     setProviderConfigs(nextConfigs);
+    if (activeProviderConfigId === configId) {
+      const fallbackConfig = nextConfigs[0];
+      setActiveProviderConfigId(fallbackConfig?.id);
+      if (fallbackConfig) {
+        setProvider(fallbackConfig);
+        await saveProviderConfig(fallbackConfig);
+      }
+    }
     setStatus("配置已删除。");
   }
 
@@ -183,11 +193,20 @@ export function ConfigScreen() {
               }
             />
             <Field
-              label="Endpoint"
+              label="Endpoint（文生图）"
               value={draftProvider.endpoint}
               onChangeText={(endpoint) =>
                 setDraftProvider({ ...draftProvider, endpoint })
               }
+              placeholder="例如：/images/generations"
+            />
+            <Field
+              label="参考图 Endpoint（图生图）"
+              value={draftProvider.referenceEndpoint}
+              onChangeText={(referenceEndpoint) =>
+                setDraftProvider({ ...draftProvider, referenceEndpoint })
+              }
+              placeholder="micuapi 常用 /chat/completions；PagePlug 可用 /pg/chat/completions"
             />
             <Field
               label="Model"
@@ -230,14 +249,6 @@ export function ConfigScreen() {
               }
             />
             <OptionGroup
-              label="参考图传输方式"
-              options={imageInputModeOptions}
-              value={draftProvider.imageInputMode}
-              onChange={(imageInputMode) =>
-                setDraftProvider({ ...draftProvider, imageInputMode })
-              }
-            />
-            <OptionGroup
               label="Stream"
               options={streamOptions}
               value={String(draftProvider.stream)}
@@ -266,6 +277,7 @@ export function ConfigScreen() {
               <View style={styles.configInfo}>
                 <Text style={styles.configName}>
                   {config.name}
+                  {activeProviderConfigId === config.id ? "（当前使用）" : ""}
                   {editingConfigId === config.id ? "（编辑中）" : ""}
                 </Text>
                 <Text style={styles.configMeta}>

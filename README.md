@@ -81,14 +81,15 @@ npm run typecheck
 - 点击已保存配置的 `修改` 后才展开编辑表单，再保存会更新当前这条配置。
 - 点击已保存配置的 `使用` 只会切换当前生成配置，不进入编辑状态。
 - 模型列表包含 `gpt-image-2-pro`、`gpt-image-2`、`image2`、`gpt-image-1`、`dall-e-3`、`dall-e-2`。
-- 参考图传输方式默认建议使用 `chat_messages`，对应中转站的 OpenAI Chat Completions 多模态格式。
-- `json_base64` 和 `multipart` 保留为接口实验模式。
+- 参考图传输方式固定为 `chat_messages`，对应中转站的 OpenAI Chat Completions 多模态格式。
+- API 仅使用 `application/json`，禁止使用 `multipart/form-data` 或 `file://` 路径传图。
 - API Key 仍然单独使用系统安全存储，不写入历史记录。
 - API Key 可以单独保存，不需要展开配置表单。
 
 生成页切换能力：
 
 - 可以在顶部切换设置页保存过的模型配置。
+- 模型配置按配置 id 唯一选中，同模型/同 endpoint 的多个配置不会同时高亮。
 - 可以在生成页直接切换当前尺寸。
 - 切换模型配置会同步切换该配置保存的 endpoint、model、size 和 responseFormat。
 
@@ -96,28 +97,28 @@ npm run typecheck
 
 - 未选择参考图时，使用 JSON 请求，走文生图模式。
 - 选择参考图后，默认使用 Chat Completions 多模态请求，把图片按 `messages[].content[].image_url.url = data:image/...;base64,...` 传给接口。
+- 请求体会同时包含顶层 `prompt` 和 `messages`，兼容中转站对 `prompt` 字段的校验。
 - 当前推荐 endpoint 是 `/chat/completions`，模型可用 `gpt-image-2-pro`，group 可用 `vip_2_image`。
 - `stream=true` 时，App 会读取完整响应文本并从 SSE 片段中提取 assistant markdown 里的图片链接。
-- `json_base64` 模式会把图片按 `input_images[].b64_json` 传给接口，仅作为兼容实验。
-- 如果配置里选择 `multipart`，则使用 `multipart/form-data`，把图片文件按 `图 1 / 图 2 / 图 3` 顺序追加到 `image` 字段。
+- 图片会被读取为完整 base64，并加上 `data:image/png;base64,` 或 `data:image/jpeg;base64,` 前缀，写入 `messages[].content[].image_url.url`。
 - 页面底部会显示调试日志，包括请求模式、请求地址、模型、图片数量和图片顺序。
 - 调试日志可以点击展开，查看完整请求信息：请求地址、模型、尺寸、prompt、是否包含参考图、图片文件信息和 base64 长度。日志不会显示完整 API Key，也不会直接打印完整 base64 图片内容。
 - 请求发送层会记录真实发送前的请求摘要，以及服务端响应状态、响应 Content-Type、响应原文前 2000 个字符。
 - 如果选择了参考图但没有读取到 base64 图片内容，App 会阻止请求并报错，不会再悄悄发送一个没有图片内容的请求。
+- App 内调试日志支持展开和长按选择复制。
+- 同一份日志会同步输出到运行 `npm start` 的电脑终端，前缀为 `[Image2 请求日志]`。
 - 已选参考图支持上移、下移和删除。
 - 当前输出下方可以直接点击下载，把生成图保存到系统相册。
 
-注意：App 端已经会真实上传参考图文件，但中转站是否接受多图图生图取决于该接口本身。如果日志显示 `请求模式：multipart` 且图片数正确，但结果仍然不参考图片，需要确认当前模型和 endpoint 是否支持图生图/多图输入，必要时把 endpoint 改成中转站文档要求的图生图接口。
+注意：App 端不会发送 `file://` 路径，也不会发送 multipart。调试日志里可以查看 `messages` 摘要、图片 data URL 长度和服务端响应原文预览。
 
 本地网页测试器支持多种图生图请求格式实验：
 
 - `文生图 JSON`：不传参考图，验证基础接口。
 - `图生图 Chat Messages`：使用 `messages[].content` 的 `text + image_url data URL`，这是当前中转站推荐格式。
-- `图生图 Multipart`：使用 `multipart/form-data`，按 `image` 字段上传文件。
-- `图生图 JSON base64`：使用 `input_images[].b64_json` 传图片内容。
-- `图生图 JSON URL`：使用 `input_images[].url` 观察接口是否接受图片 URL。
+- `图生图 Chat Messages`：使用 `messages[].content` 的 `text + image_url data URL`，这是当前唯一支持格式。
 
-如果 RN 端出现 `unsupported FormDataPart implementation`，通常是 React Native 当前运行时对 multipart 文件 part 的兼容问题。优先在设置页把参考图传输方式切到 `json_base64`，再测试 `图生图 JSON base64` 是否被中转站支持。
+如果服务端返回 400，优先展开调试日志，确认 `image_url.url` 是否以 `data:image/png;base64,` 或 `data:image/jpeg;base64,` 开头，并确认 `url_length` 大于前缀长度。
 
 ## MVP 目标
 
@@ -130,7 +131,7 @@ npm run typecheck
 - 支持文生图。
 - 支持多张本地图片作为图生图参考图。
 - 多图输入必须保留顺序，用户可以在提示词中使用“第一张图”“第二张图”描述图片。
-- 第一版上传图片格式只支持 PNG、JPG/JPEG、WEBP。
+- 第一版上传图片格式只支持 PNG、JPG/JPEG。
 - 用户可以修改上一次的提示词和参数后重新生成。
 - 如果上一次请求还在进行中，用户发起新请求时自动取消旧请求，只保留新请求作为当前任务。
 - 历史记录需要本地持久化，下一次打开软件时不能丢失之前的提示词、参数、输入图片和输出结果。
@@ -193,7 +194,7 @@ UI 需要明确显示每张图的编号和缩略图。用户写提示词时，�
 
 - `index`：图片顺序，从 1 开始
 - `localUri`：本地图片地址
-- `mimeType`：`image/png`、`image/jpeg` 或 `image/webp`
+- `mimeType`：`image/png` 或 `image/jpeg`
 - `displayName`：可选，用于 UI 展示
 - `processedPath`：可选，压缩或转码后的临时文件路径
 
@@ -358,7 +359,7 @@ flowchart TD
 
 ### 阶段 5：多图图生图
 
-- 支持选择多张 PNG、JPG/JPEG、WEBP 图片。
+- 支持选择多张 PNG、JPG/JPEG 图片。
 - 按用户选择顺序显示“图 1、图 2、图 3”。
 - 将输入图片转换为有序 `ImageInput` 列表。
 - Provider 请求层按顺序传递图片。

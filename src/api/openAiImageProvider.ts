@@ -4,6 +4,8 @@ import type {
   ImageInput,
   ImageResult,
 } from "../types";
+import type { ProviderConfig } from "../types";
+import { defaultProviderConfig } from "../types";
 
 type OpenAiImageResponse = {
   data?: Array<{
@@ -21,13 +23,15 @@ type OpenAiImageResponse = {
   error?: {
     message?: string;
   };
+  message?: string;
+  success?: boolean;
 };
 
 export type BuiltImageRequest = {
   url: string;
   init: RequestInit;
   debug: {
-    requestMode: "json" | "chat_messages" | "json_base64" | "multipart";
+    requestMode: "chat_messages" | "images_generations";
     endpoint: string;
     model: string;
     imageCount: number;
@@ -35,158 +39,117 @@ export type BuiltImageRequest = {
   };
 };
 
-export type MultipartImagePart = {
-  fieldName: "image";
-  index: number;
-  uri: string;
-  name: string;
-  type: ImageInput["mimeType"];
-};
+export function resolveGenerationEndpoint(
+  provider: ProviderConfig,
+  inputImages: ImageInput[],
+): string {
+  return inputImages.length > 0
+    ? provider.referenceEndpoint || defaultProviderConfig.referenceEndpoint
+    : provider.endpoint || defaultProviderConfig.endpoint;
+}
 
 export type GenerationDebugListener = (payload: DebugLogPayload) => void;
 
 export function joinUrl(baseUrl: string, endpoint: string): string {
-  const cleanBase = baseUrl.trim().replace(/\/+$/, "");
-  const cleanEndpoint = endpoint.trim().replace(/^\/+/, "");
+  const cleanBase = String(baseUrl ?? "").trim().replace(/\/+$/, "");
+  const cleanEndpoint = String(endpoint ?? "").trim().replace(/^\/+/, "");
   return cleanEndpoint ? `${cleanBase}/${cleanEndpoint}` : cleanBase;
 }
 
 export function buildImageGenerationRequest(
   request: GenerationRequest,
 ): BuiltImageRequest {
-  const url = joinUrl(request.provider.baseUrl, request.provider.endpoint);
+  const hasReferenceImages = request.inputImages.length > 0;
+  const endpoint = resolveGenerationEndpoint(
+    request.provider,
+    request.inputImages,
+  );
+  const url = joinUrl(request.provider.baseUrl, endpoint);
+  const imageOrder = request.inputImages
+    .slice()
+    .sort((a, b) => a.index - b.index)
+    .map((image) => `图 ${image.index}: ${image.displayName ?? image.localUri}`);
   const debug = {
-    requestMode:
-      request.provider.imageInputMode === "chat_messages"
-        ? "chat_messages"
-        : request.inputImages.length > 0
-          ? request.provider.imageInputMode
-          : "json",
-    endpoint: request.provider.endpoint,
+    requestMode: hasReferenceImages ? "chat_messages" : "images_generations",
+    endpoint,
     model: request.provider.model,
     imageCount: request.inputImages.length,
-    imageOrder: buildOrderedImageParts(request.inputImages).map(
-      (part) => `图 ${part.index}: ${part.name}`,
-    ),
+    imageOrder,
   } satisfies BuiltImageRequest["debug"];
 
-  if (
-    request.provider.imageInputMode === "chat_messages"
-  ) {
-    if (request.inputImages.length > 0) {
-      assertImagesHaveBase64(request.inputImages);
-    }
-    const content =
-      request.inputImages.length > 0
-        ? [
-            { type: "text", text: request.prompt.trim() },
-            ...request.inputImages
-              .slice()
-              .sort((a, b) => a.index - b.index)
-              .map((image) => ({
-                type: "image_url",
-                image_url: {
-                  url: `data:${image.mimeType};base64,${image.base64Data}`,
-                },
-              })),
-          ]
-        : request.prompt.trim();
-    const body = {
-      model: request.provider.model.trim(),
-      ...(request.provider.group.trim()
-        ? { group: request.provider.group.trim() }
-        : {}),
-      messages: [
-        {
-          role: "user",
-          content,
-        },
-      ],
-      stream: request.provider.stream,
-      temperature: 0.7,
-      top_p: 1,
-      frequency_penalty: 0,
-      presence_penalty: 0,
-    };
-
-    return {
-      url,
-      init: {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${request.apiKey.trim()}`,
-        },
-        body: JSON.stringify(body),
-      },
-      debug,
-    };
-  }
-
-  if (
-    request.inputImages.length > 0 &&
-    request.provider.imageInputMode === "multipart"
-  ) {
-    const formData = new FormData();
-    formData.append("model", request.provider.model.trim());
-    formData.append("prompt", request.prompt.trim());
-    formData.append("size", request.provider.size.trim());
-    formData.append("n", "1");
-    formData.append("response_format", request.provider.responseFormat);
-    formData.append(
-      "image_order",
-      JSON.stringify(buildOrderedImageParts(request.inputImages)),
-    );
-
-    for (const image of buildOrderedImageParts(request.inputImages)) {
-      appendImagePart(formData, image);
-    }
-
-    return {
-      url,
-      init: {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${request.apiKey.trim()}`,
-        },
-        body: formData,
-      },
-      debug,
-    };
-  }
-
-  const body: Record<string, unknown> = {
-    model: request.provider.model.trim(),
-    prompt: request.prompt.trim(),
-    size: request.provider.size.trim(),
-    n: 1,
-    response_format: request.provider.responseFormat,
-  };
-
-  if (request.inputImages.length > 0) {
+  if (hasReferenceImages) {
     assertImagesHaveBase64(request.inputImages);
-    body.input_images = request.inputImages
-      .slice()
-      .sort((a, b) => a.index - b.index)
-      .map((image) => ({
-        index: image.index,
-        b64_json: image.base64Data,
-        mime_type: image.mimeType,
-        display_name: image.displayName,
-      }));
+    return {
+      url,
+      init: {
+        method: "POST",
+        headers: buildJsonHeaders(request.apiKey),
+        body: JSON.stringify(buildChatCompletionBody(request)),
+      },
+      debug,
+    };
   }
 
   return {
     url,
     init: {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${request.apiKey.trim()}`,
-      },
-      body: JSON.stringify(body),
+      headers: buildJsonHeaders(request.apiKey),
+      body: JSON.stringify(buildImagesGenerationsBody(request)),
     },
     debug,
+  };
+}
+
+function buildJsonHeaders(apiKey: string): HeadersInit {
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${apiKey.trim()}`,
+  };
+}
+
+function buildImagesGenerationsBody(request: GenerationRequest) {
+  return {
+    model: request.provider.model.trim(),
+    prompt: request.prompt.trim(),
+    size: request.provider.size.trim() || "1024x1024",
+    n: 1,
+    response_format: request.provider.responseFormat,
+  };
+}
+
+function buildChatCompletionBody(request: GenerationRequest) {
+  const content = [
+    { type: "text", text: request.prompt.trim() },
+    ...request.inputImages
+      .slice()
+      .sort((a, b) => a.index - b.index)
+      .map((image) => ({
+        type: "image_url",
+        image_url: {
+          url: buildDataImageUrl(image),
+        },
+      })),
+  ];
+
+  return {
+    model: request.provider.model.trim(),
+    ...(() => {
+      const group = String(request.provider.group ?? "").trim();
+      return group ? { group } : {};
+    })(),
+    prompt: request.prompt.trim(),
+    messages: [
+      {
+        role: "user",
+        content,
+      },
+    ],
+    stream: request.provider.stream,
+    temperature: 0.7,
+    top_p: 1,
+    frequency_penalty: 0,
+    presence_penalty: 0,
   };
 }
 
@@ -199,41 +162,8 @@ function assertImagesHaveBase64(inputImages: ImageInput[]): void {
   }
 }
 
-export function buildOrderedImageParts(
-  inputImages: ImageInput[],
-): MultipartImagePart[] {
-  return inputImages
-    .slice()
-    .sort((a, b) => a.index - b.index)
-    .map((image) => ({
-      fieldName: "image",
-      index: image.index,
-      uri: image.localUri,
-      name: image.displayName || `image-${image.index}.${mimeTypeToExtension(image.mimeType)}`,
-      type: image.mimeType,
-    }));
-}
-
-function mimeTypeToExtension(mimeType: ImageInput["mimeType"]): string {
-  if (mimeType === "image/jpeg") return "jpg";
-  if (mimeType === "image/webp") return "webp";
-  return "png";
-}
-
-function appendImagePart(formData: FormData, image: MultipartImagePart): void {
-  const isReactNative =
-    typeof navigator !== "undefined" && navigator.product === "ReactNative";
-
-  if (isReactNative) {
-    formData.append(image.fieldName, {
-      uri: image.uri,
-      name: image.name,
-      type: image.type,
-    } as unknown as Blob);
-    return;
-  }
-
-  formData.append(image.fieldName, new Blob([], { type: image.type }), image.name);
+function buildDataImageUrl(image: ImageInput): string {
+  return `data:${image.mimeType};base64,${image.base64Data}`;
 }
 
 export function extractImageResults(response: OpenAiImageResponse): ImageResult[] {
@@ -293,13 +223,14 @@ export async function generateImages(
     },
   });
   const body = parseResponseText(text, response.headers.get("content-type"));
+  const apiError = extractApiErrorMessage(body);
 
   if (!response.ok) {
-    const message =
-      typeof body?.error?.message === "string"
-        ? body.error.message
-        : `请求失败：HTTP ${response.status}`;
-    throw new Error(message);
+    throw new Error(apiError ?? `请求失败：HTTP ${response.status}`);
+  }
+
+  if (apiError) {
+    throw new Error(apiError);
   }
 
   const results = extractImageResults(body);
@@ -308,6 +239,22 @@ export async function generateImages(
   }
 
   return results;
+}
+
+export function extractApiErrorMessage(
+  body: OpenAiImageResponse | null | undefined,
+): string | undefined {
+  if (!body) return undefined;
+
+  if (typeof body.error?.message === "string" && body.error.message.trim()) {
+    return body.error.message;
+  }
+
+  if (body.success === false && typeof body.message === "string" && body.message.trim()) {
+    return body.message;
+  }
+
+  return undefined;
 }
 
 function parseResponseText(text: string, contentType: string | null): OpenAiImageResponse {
@@ -351,6 +298,8 @@ function buildRequestDebugDetails(
     method: builtRequest.init.method,
     requestMode: builtRequest.debug.requestMode,
     endpoint: builtRequest.debug.endpoint,
+    configuredEndpoint: request.provider.endpoint,
+    configuredReferenceEndpoint: request.provider.referenceEndpoint,
     model: request.provider.model,
     size: request.provider.size,
     responseFormat: request.provider.responseFormat,
@@ -374,24 +323,13 @@ function buildRequestDebugDetails(
     jsonBody:
       typeof builtRequest.init.body === "string"
         ? safeJsonParse(builtRequest.init.body)
-        : "multipart/form-data",
+        : undefined,
   };
 }
 
 function safeJsonParse(value: string): unknown {
   try {
     const parsed = JSON.parse(value) as Record<string, unknown>;
-    if (Array.isArray(parsed.input_images)) {
-      parsed.input_images = parsed.input_images.map((image) => {
-        const imageRecord = image as Record<string, unknown>;
-        const b64 = String(imageRecord.b64_json ?? "");
-        return {
-          ...imageRecord,
-          b64_json: b64 ? `${b64.slice(0, 24)}...` : undefined,
-          b64_json_length: b64.length,
-        };
-      });
-    }
     if (Array.isArray(parsed.messages)) {
       parsed.messages = parsed.messages.map((message) => {
         const messageRecord = message as Record<string, unknown>;

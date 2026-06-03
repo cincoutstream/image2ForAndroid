@@ -266,17 +266,13 @@
           <label>
             请求实验模式
             <select id="experimentMode">
-              <option value="json">文生图 JSON：不传参考图</option>
               <option value="chat_messages">图生图 Chat Messages：content text + image_url data URL</option>
-              <option value="multipart">图生图 Multipart：image 文件字段</option>
-              <option value="json_base64">图生图 JSON：input_images[].b64_json</option>
-              <option value="json_image_urls">图生图 JSON：input_images[].url（仅用于观察，不推荐）</option>
             </select>
           </label>
 
           <label>
             参考图文件（可多选）
-            <input id="imageFiles" type="file" accept="image/png,image/jpeg,image/webp" multiple />
+            <input id="imageFiles" type="file" accept="image/png,image/jpeg" multiple />
           </label>
 
           <label>

@@ -27,6 +27,7 @@ function createHistoryItem(
 export function cancelActiveGeneration(): void {
   activeController?.abort();
   activeController = null;
+  activeRunId += 1;
 }
 
 export async function runGenerationTask(

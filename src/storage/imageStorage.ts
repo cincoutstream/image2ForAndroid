@@ -1,7 +1,7 @@
 import * as FileSystem from "expo-file-system/legacy";
 import * as MediaLibrary from "expo-media-library/legacy";
 
-import type { ImageResult } from "../types";
+import type { GenerationHistory, ImageResult } from "../types";
 
 const OUTPUT_DIR = `${FileSystem.documentDirectory ?? ""}generated/`;
 
@@ -45,6 +45,33 @@ export async function persistImageResults(
   results: ImageResult[],
 ): Promise<ImageResult[]> {
   return Promise.all(results.map((result) => persistImageResult(result)));
+}
+
+export async function deleteLocalImagesForHistoryItems(
+  items: GenerationHistory[],
+): Promise<void> {
+  const uris = new Set<string>();
+
+  for (const item of items) {
+    for (const image of item.outputImages) {
+      if (image.type === "local") {
+        uris.add(image.value);
+      }
+    }
+  }
+
+  await Promise.all(
+    [...uris].map(async (uri) => {
+      try {
+        const info = await FileSystem.getInfoAsync(uri);
+        if (info.exists) {
+          await FileSystem.deleteAsync(uri, { idempotent: true });
+        }
+      } catch {
+        // Ignore missing or locked files during cleanup.
+      }
+    }),
+  );
 }
 
 export async function exportImageToLibrary(localUri: string): Promise<void> {

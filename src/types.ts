@@ -1,9 +1,15 @@
 export type ResponseFormat = "url" | "b64_json";
-export type ImageInputMode = "chat_messages" | "json_base64" | "multipart";
+export type ImageInputMode = "chat_messages" | "images_generations";
+
+/** @deprecated 请使用 provider.endpoint，保留仅为兼容旧 bundle */
+export const ENDPOINT_TEXT_TO_IMAGE = "/images/generations";
+/** @deprecated 请使用 provider.referenceEndpoint，保留仅为兼容旧 bundle */
+export const ENDPOINT_WITH_REFERENCE_IMAGES = "/chat/completions";
 
 export type ProviderConfig = {
   baseUrl: string;
   endpoint: string;
+  referenceEndpoint: string;
   model: string;
   size: string;
   responseFormat: ResponseFormat;
@@ -31,8 +37,7 @@ export type DebugLogPayload = {
 
 export type SupportedImageMimeType =
   | "image/png"
-  | "image/jpeg"
-  | "image/webp";
+  | "image/jpeg";
 
 export type ImageInput = {
   index: number;
@@ -69,7 +74,8 @@ export type GenerationHistory = {
 
 export const defaultProviderConfig: ProviderConfig = {
   baseUrl: "https://www.micuapi.ai/v1",
-  endpoint: "/chat/completions",
+  endpoint: ENDPOINT_TEXT_TO_IMAGE,
+  referenceEndpoint: ENDPOINT_WITH_REFERENCE_IMAGES,
   model: "gpt-image-2-pro",
   size: "1024x1024",
   responseFormat: "url",

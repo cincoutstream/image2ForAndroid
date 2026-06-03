@@ -17,6 +17,9 @@ export default function App() {
   const activeTab = useAppStore((state) => state.activeTab);
   const setActiveTab = useAppStore((state) => state.setActiveTab);
   const setProvider = useAppStore((state) => state.setProvider);
+  const setActiveProviderConfigId = useAppStore(
+    (state) => state.setActiveProviderConfigId,
+  );
   const setProviderConfigs = useAppStore((state) => state.setProviderConfigs);
   const setHistoryItems = useAppStore((state) => state.setHistoryItems);
   const setErrorMessage = useAppStore((state) => state.setErrorMessage);
@@ -30,8 +33,20 @@ export default function App() {
           getProviderConfigs(),
         ]);
         setProviderConfigs(savedConfigs);
-        if (savedProvider ?? savedConfigs[0]) {
-          setProvider(savedProvider ?? savedConfigs[0]);
+        const initialProvider = savedProvider ?? savedConfigs[0];
+        if (initialProvider) {
+          setProvider(initialProvider);
+          const matchedConfig = savedConfigs.find(
+            (config) =>
+              config.baseUrl === initialProvider.baseUrl &&
+              config.endpoint === initialProvider.endpoint &&
+              config.model === initialProvider.model &&
+              config.size === initialProvider.size &&
+              config.responseFormat === initialProvider.responseFormat &&
+              config.group === initialProvider.group &&
+              config.stream === initialProvider.stream,
+          );
+          setActiveProviderConfigId(matchedConfig?.id ?? savedConfigs[0]?.id);
         }
         setHistoryItems(await listHistoryItems());
       } catch (error) {
@@ -40,7 +55,13 @@ export default function App() {
         );
       }
     })();
-  }, [setErrorMessage, setHistoryItems, setProvider, setProviderConfigs]);
+  }, [
+    setActiveProviderConfigId,
+    setErrorMessage,
+    setHistoryItems,
+    setProvider,
+    setProviderConfigs,
+  ]);
 
   return (
     <SafeAreaView style={styles.root}>

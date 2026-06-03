@@ -71,10 +71,23 @@ export async function getProviderConfigs(): Promise<SavedProviderConfig[]> {
   return defaultSavedProviderConfigs;
 }
 
-function normalizeProviderConfig(config: ProviderConfig): ProviderConfig {
+export function normalizeProviderConfig(
+  config: Partial<ProviderConfig>,
+): ProviderConfig {
   return {
     ...defaultProviderConfig,
     ...config,
-    imageInputMode: config.imageInputMode ?? defaultProviderConfig.imageInputMode,
+    baseUrl: (config.baseUrl ?? defaultProviderConfig.baseUrl).trim(),
+    endpoint: (config.endpoint ?? defaultProviderConfig.endpoint).trim(),
+    referenceEndpoint: (
+      config.referenceEndpoint ?? defaultProviderConfig.referenceEndpoint
+    ).trim(),
+    model: (config.model ?? defaultProviderConfig.model).trim(),
+    size: (config.size ?? defaultProviderConfig.size).trim(),
+    group: (config.group ?? defaultProviderConfig.group).trim(),
+    responseFormat:
+      config.responseFormat ?? defaultProviderConfig.responseFormat,
+    imageInputMode: "chat_messages",
+    stream: config.stream ?? defaultProviderConfig.stream,
   };
 }

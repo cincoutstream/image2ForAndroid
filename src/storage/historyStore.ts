@@ -1,6 +1,7 @@
 import * as SQLite from "expo-sqlite";
 
-import type { GenerationHistory, ImageInput, ImageResult, ProviderConfig } from "../types";
+import { normalizeProviderConfig } from "../security/credentialStore";
+import type { GenerationHistory, ImageInput, ImageResult } from "../types";
 
 type HistoryRow = {
   id: string;
@@ -62,6 +63,17 @@ export async function addHistoryItem(item: GenerationHistory): Promise<void> {
   );
 }
 
+export async function deleteHistoryItems(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+
+  const db = await getDatabase();
+  const placeholders = ids.map(() => "?").join(", ");
+  await db.runAsync(
+    `DELETE FROM generation_history WHERE id IN (${placeholders});`,
+    ids,
+  );
+}
+
 export async function listHistoryItems(): Promise<GenerationHistory[]> {
   const db = await getDatabase();
   const rows = await db.getAllAsync<HistoryRow>(
@@ -71,7 +83,7 @@ export async function listHistoryItems(): Promise<GenerationHistory[]> {
   return rows.map((row) => ({
     id: row.id,
     prompt: row.prompt,
-    provider: JSON.parse(row.provider_json) as ProviderConfig,
+    provider: normalizeProviderConfig(JSON.parse(row.provider_json)),
     inputImages: JSON.parse(row.input_images_json) as ImageInput[],
     outputImages: JSON.parse(row.output_images_json) as ImageResult[],
     status: row.status,
