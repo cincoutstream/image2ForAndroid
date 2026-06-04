@@ -1,49 +1,113 @@
 # image2ForAndroid
-做一个用来调用image2来进行AI作图的软件
-url:https://www.micuapi.ai/v1
-TodoList:
-1.问题:输入的图片问题;
 
+一款在 Android 上运行的 AI 作图客户端，通过 OpenAI 兼容接口调用 [micuapi](https://www.micuapi.ai/) 等中转站，支持文生图、多图参考生图、本地历史与相册导出。
 
+## Demo
 
-针对请求响应格式的重难点，采取先写一个静态网页作为测试，测试出来一个符合要求的接口再去开发
-测试结果,下面通过url版和base64都成功通过:
+> 将截图放入 `docs/images/` 后，可替换下方占位说明。
+
+| 生成页 | 历史页 | 设置页 |
+|--------|--------|--------|
+| ![alt text](assets/images/Screenshot_20260604_104613.jpg) |![alt text](assets/images/Screenshot_20260604_104000.jpg) | ![alt text](assets/images/Screenshot_20260604_104622.jpg) |
+
+## Background
+
+- 需要在手机上快速调用 Image2 / GPT 图像类模型，又不想每次手写 curl 或依赖网页。
+- 文生图与图生图使用的 **endpoint 不同**（`/images/generations` vs `/chat/completions`），先在本地网页 (`index.html` + `app.js`) 验证请求格式后，再实现 App。
+- 第一版 **不依赖自建后端**：`baseUrl`、`API Key`、模型参数均由用户在 App 内配置，结果保存在本地。
+
+## Features
+
+- **文生图**：纯文本 prompt，走 `baseUrl + /images/generations`。
+- **多图图生图**：从相册选择多张 PNG/JPEG 参考图，按顺序编号（图 1、图 2…），走 `baseUrl + /chat/completions`，以 `data:image/...;base64,...` 传入 `messages`。
+- **模型配置**：多套 `baseUrl` / endpoint / model / size / group / stream 配置，生成页一键切换。
+- **重新生成**：支持修改 prompt 或参数后再次生成；新请求会自动取消未完成的旧请求。
+- **本地历史**：SQLite 持久化 prompt、参数、输入/输出图；支持单条删除、批量选择删除（含全选）。
+- **相册导出**：生成图先存 App 私有目录，用户点击后再导出到系统相册。
+- **调试日志**：记录请求 URL、模式、图片顺序、响应摘要；同步输出到 Metro 终端（`[Image2 请求日志]`）。
+- **本地 API 测试器**：`index.html` 可在浏览器中试验文生图 / 图生图请求格式（受 CORS 限制时可用 curl）。
+
+## Tech Stack
+
+- [React Native](https://reactnative.dev/) `0.85`
+- [Expo](https://expo.dev/) `56`
+- [TypeScript](https://www.typescriptlang.org/)
+- [Zustand](https://github.com/pmndrs/zustand) — 全局状态
+- [expo-sqlite](https://docs.expo.dev/versions/latest/sdk/sqlite/) — 历史记录
+- [expo-secure-store](https://docs.expo.dev/versions/latest/sdk/securestore/) — API Key 加密存储
+- [expo-image-picker](https://docs.expo.dev/versions/latest/sdk/imagepicker/) / [expo-file-system](https://docs.expo.dev/versions/latest/sdk/filesystem/) / [expo-media-library](https://docs.expo.dev/versions/latest/sdk/medialibrary/)
+- [Vitest](https://vitest.dev/) — 请求构建与响应解析单元测试
+
+## Project Structure
+
+```text
+image2ForAndroid/
+├── App.tsx                 # 根组件与 Tab 导航
+├── app.json                # Expo 配置
+├── index.html              # 浏览器端 API 测试页
+├── app.js                  # 测试页请求逻辑（与 App 对齐）
+├── src/
+│   ├── api/
+│   │   ├── openAiImageProvider.ts   # 请求构建、发送、响应解析
+│   │   └── openAiImageProvider.test.ts
+│   ├── security/
+│   │   └── credentialStore.ts     # API Key / 模型配置持久化
+│   ├── storage/
+│   │   ├── historyStore.ts          # 历史记录 SQLite
+│   │   └── imageStorage.ts          # 输出图本地存储与相册导出
+│   ├── tasks/
+│   │   └── generationTaskManager.ts # 生成任务与取消
+│   ├── store/
+│   │   └── useAppStore.ts           # Zustand 状态
+│   ├── ui/
+│   │   ├── GenerateScreen.tsx       # 生成页
+│   │   ├── HistoryScreen.tsx        # 历史页（含批量删除）
+│   │   ├── ConfigScreen.tsx         # 设置页
+│   │   └── components.tsx           # 通用 UI
+│   └── types.ts                     # 类型与默认配置
+└── test/                            # 本地静态资源（如 test.png）
 ```
-{
-  "created": 1780407223,
-  "data": [
-    {
-      "url": "https://oss.filenest.top/uploads/983xxxxxf70.png"
-    }
-  ],
-  "usage": {
-    "total_tokens": 811,
-    "input_tokens": 46,
-    "output_tokens": 765,
-    "input_tokens_details": {
-      "text_tokens": 46,
-      "image_tokens": 0
-    }
-  }
-}
-```
 
-## 技术选型:    
-React Native + Expo
+## Installation
 
-## RN + Expo 开发环境
+环境要求：
 
-推荐环境：
-
-- Node.js `20.19.4+`。当前依赖中的 Metro/React Native 包要求该小版本以上；`20.19.0` 可以安装，但启动时如果遇到 Metro 异常，优先升级 Node。
-- npm `10+`
-- Android 真机安装 Expo Go，或使用 Android Studio 模拟器。
-
-安装依赖：
+- Node.js **20.19.4+**（Metro / RN 推荐版本）
+- npm **10+**
+- Android 真机安装 [Expo Go](https://expo.dev/go)，或 Android Studio 模拟器
 
 ```bash
+git clone <your-repo-url>
+cd image2ForAndroid
 npm install
 ```
+
+## Environment Variables
+
+本项目 **不使用** `.env` 环境变量。敏感信息与接口地址均在 App 内配置：
+
+| 配置项 | 说明 | 存储位置 |
+|--------|------|----------|
+| API Key | 中转站密钥 | `expo-secure-store`（加密） |
+| Base URL | 如 `https://www.micuapi.ai/v1` | 模型配置（SecureStore + 内存） |
+| Endpoint（文生图） | 默认 `/images/generations` | 模型配置 |
+| 参考图 Endpoint | 默认 `/chat/completions` | 模型配置 |
+| Model / Size / Group / Stream 等 | 生成参数 | 模型配置 |
+
+> API Key **不会**写入历史记录或调试日志明文。
+
+### micuapi 推荐配置示例
+
+| 字段 | 建议值 |
+|------|--------|
+| Base URL | `https://www.micuapi.ai/v1` |
+| Endpoint（文生图） | `/images/generations` |
+| 参考图 Endpoint | `/chat/completions` |
+| Model | `gpt-image-2-pro` |
+| Group | `vip_2_image` |
+| Stream | `true`（SSE 响应需从 markdown 中提取图片 URL） |
+
+## Run
 
 启动开发服务：
 
@@ -51,329 +115,163 @@ npm install
 npm start
 ```
 
-启动后可以：
+- 使用 Expo Go 扫描终端二维码，或执行 `npm run android` 打开模拟器。
 
-- 用 Expo Go 扫描终端里的二维码。
-- 或运行 `npm run android` 打开 Android 模拟器。
-
-验证命令：
+验证：
 
 ```bash
 npm test
 npm run typecheck
 ```
 
-当前 App 已包含三个页面：
+浏览器测试页（需自行用静态服务器打开 `index.html`，或直接打开文件）：
 
-- `生成`：输入 prompt、选择多张参考图、发起生成/重新生成。
-- `历史`：查看本地历史、再次编辑、导出生成图到相册。
-- `设置`：保存中转站 `baseUrl`、`endpoint`、`apiKey`、`model`、尺寸和响应格式。
+```bash
+# 示例：用 npx 起一个本地静态服务
+npx serve .
+# 访问 index.html
+```
 
-设置页配置能力：
+## API 说明（简要）
 
-- `Response Format` 使用按钮二选一：`url` / `b64_json`。
-- `Size` 使用常用尺寸按钮选择：`1024x1024`、`1024x1792`、`1792x1024`、`512x512`。
-- `Model` 可以手动输入，也可以从常用模型按钮选择。
-- 可以保存多个模型配置，每个配置包含 `baseUrl`、`endpoint`、`model`、`size`、`responseFormat`。
-- 直接点击保存会新增一条配置。
-- 配置名称作为唯一索引，新增时如果重名会拒绝保存。
-- 点击 `配置` 才展开新增配置表单；保存后表单会清空并收起。
-- 点击已保存配置的 `修改` 后才展开编辑表单，再保存会更新当前这条配置。
-- 点击已保存配置的 `使用` 只会切换当前生成配置，不进入编辑状态。
-- 模型列表包含 `gpt-image-2-pro`、`gpt-image-2`、`image2`、`gpt-image-1`、`dall-e-3`、`dall-e-2`。
-- 参考图传输方式固定为 `chat_messages`，对应中转站的 OpenAI Chat Completions 多模态格式。
-- API 仅使用 `application/json`，禁止使用 `multipart/form-data` 或 `file://` 路径传图。
-- API Key 仍然单独使用系统安全存储，不写入历史记录。
-- API Key 可以单独保存，不需要展开配置表单。
-
-生成页切换能力：
-
-- 可以在顶部切换设置页保存过的模型配置。
-- 模型配置按配置 id 唯一选中，同模型/同 endpoint 的多个配置不会同时高亮。
-- 可以在生成页直接切换当前尺寸。
-- 切换模型配置会同步切换该配置保存的 endpoint、model、size 和 responseFormat。
-
-生成页调试能力：
-
-- 未选择参考图时，使用 JSON 请求，走文生图模式。
-- 选择参考图后，默认使用 Chat Completions 多模态请求，把图片按 `messages[].content[].image_url.url = data:image/...;base64,...` 传给接口。
-- 请求体会同时包含顶层 `prompt` 和 `messages`，兼容中转站对 `prompt` 字段的校验。
-- 当前推荐 endpoint 是 `/chat/completions`，模型可用 `gpt-image-2-pro`，group 可用 `vip_2_image`。
-- `stream=true` 时，App 会读取完整响应文本并从 SSE 片段中提取 assistant markdown 里的图片链接。
-- 图片会被读取为完整 base64，并加上 `data:image/png;base64,` 或 `data:image/jpeg;base64,` 前缀，写入 `messages[].content[].image_url.url`。
-- 页面底部会显示调试日志，包括请求模式、请求地址、模型、图片数量和图片顺序。
-- 调试日志可以点击展开，查看完整请求信息：请求地址、模型、尺寸、prompt、是否包含参考图、图片文件信息和 base64 长度。日志不会显示完整 API Key，也不会直接打印完整 base64 图片内容。
-- 请求发送层会记录真实发送前的请求摘要，以及服务端响应状态、响应 Content-Type、响应原文前 2000 个字符。
-- 如果选择了参考图但没有读取到 base64 图片内容，App 会阻止请求并报错，不会再悄悄发送一个没有图片内容的请求。
-- App 内调试日志支持展开和长按选择复制。
-- 同一份日志会同步输出到运行 `npm start` 的电脑终端，前缀为 `[Image2 请求日志]`。
-- 已选参考图支持上移、下移和删除。
-- 当前输出下方可以直接点击下载，把生成图保存到系统相册。
-
-注意：App 端不会发送 `file://` 路径，也不会发送 multipart。调试日志里可以查看 `messages` 摘要、图片 data URL 长度和服务端响应原文预览。
-
-本地网页测试器支持多种图生图请求格式实验：
-
-- `文生图 JSON`：不传参考图，验证基础接口。
-- `图生图 Chat Messages`：使用 `messages[].content` 的 `text + image_url data URL`，这是当前中转站推荐格式。
-- `图生图 Chat Messages`：使用 `messages[].content` 的 `text + image_url data URL`，这是当前唯一支持格式。
-
-如果服务端返回 400，优先展开调试日志，确认 `image_url.url` 是否以 `data:image/png;base64,` 或 `data:image/jpeg;base64,` 开头，并确认 `url_length` 大于前缀长度。
-
-## MVP 目标
-
-第一版目标是做一个可以独立运行的安卓端 AI 作图工具。用户在本地填写中转站 `baseUrl`、`apiKey` 和 `model` 后，可以完成文生图、多图图生图、结果回看和重新生成。
-
-第一版不依赖后端服务。后端代理、账号系统和云端同步都放到后续阶段。
-
-## 已确认需求
-
-- 支持文生图。
-- 支持多张本地图片作为图生图参考图。
-- 多图输入必须保留顺序，用户可以在提示词中使用“第一张图”“第二张图”描述图片。
-- 第一版上传图片格式只支持 PNG、JPG/JPEG。
-- 用户可以修改上一次的提示词和参数后重新生成。
-- 如果上一次请求还在进行中，用户发起新请求时自动取消旧请求，只保留新请求作为当前任务。
-- 历史记录需要本地持久化，下一次打开软件时不能丢失之前的提示词、参数、输入图片和输出结果。
-- 生成结果先保存到 App 私有存储；用户点击下载时，再导出到系统相册。
-
-## 第一版功能范围
-
-### 1. 文生图
-
-用户填写或选择以下配置：
-
-- `baseUrl`：例如 `https://www.micuapi.ai/v1`
-- `endpoint`：默认 `/images/generations`
-- `apiKey`：用户自己的中转站 Key
-- `model`：例如 `image2`
-- `size`：例如 `1024x1024`
-- `response_format`：`url` 或 `b64_json`
-
-请求采用 OpenAI-compatible 风格：
+### 文生图
 
 ```http
-POST {baseUrl}{endpoint}
+POST {baseUrl}/images/generations
 Authorization: Bearer {apiKey}
 Content-Type: application/json
 ```
 
-响应优先支持两种主流格式：
-
 ```json
 {
-  "data": [
-    {
-      "url": "https://example.com/image.png"
-    }
-  ]
+  "model": "gpt-image-2-pro",
+  "prompt": "一只穿宇航服的橘猫",
+  "size": "1024x1024",
+  "n": 1,
+  "response_format": "url"
 }
 ```
 
+### 图生图（多模态 Chat）
+
+```http
+POST {baseUrl}/chat/completions
+Authorization: Bearer {apiKey}
+Content-Type: application/json
+```
+
+请求体包含 `messages[].content` 中的 `text` 与 `image_url`（`data:image/png;base64,...`）。App **仅使用 JSON**，不使用 `multipart/form-data` 或 `file://` 传图。
+
+### 响应示例
+
 ```json
 {
-  "data": [
-    {
-      "b64_json": "base64-image-content"
-    }
-  ]
+  "created": 1780407223,
+  "data": [{ "url": "https://example.com/output.png" }],
+  "usage": { "total_tokens": 811 }
 }
 ```
 
-### 2. 多图图生图
+## Android 打包与部署
 
-用户可以从本地选择多张图片，App 按选择顺序生成稳定编号：
+开发阶段用 **Expo Go** 即可；要装到真机、内部分发或上架 Google Play，需要打出 **独立 APK/AAB**（本项目含原生模块：`expo-sqlite`、`expo-secure-store` 等，不能只用 Expo Go 发布）。
 
-- 图 1
-- 图 2
-- 图 3
+### 方式一：EAS Build（推荐，云端打包）
 
-UI 需要明确显示每张图的编号和缩略图。用户写提示词时，可以直接使用“第一张图”“第二张图”这样的描述。
+1. **注册 Expo 账号**  
+   https://expo.dev/signup
 
-请求层必须保留图片顺序。每张输入图在内部表示为一个 `ImageInput`，包含：
+2. **安装 EAS CLI 并登录**
 
-- `index`：图片顺序，从 1 开始
-- `localUri`：本地图片地址
-- `mimeType`：`image/png` 或 `image/jpeg`
-- `displayName`：可选，用于 UI 展示
-- `processedPath`：可选，压缩或转码后的临时文件路径
+   ```bash
+   npm install -g eas-cli
+   eas login
+   ```
 
-如果当前中转站或模型不支持多图图生图，Provider 层需要返回明确错误，提示用户当前模型不支持该能力。
+3. **关联项目（首次）**
 
-### 3. 修改提示词与重新生成
+   ```bash
+   cd image2ForAndroid
+   eas init
+   ```
 
-重新生成不是“复用一次旧 HTTP 请求”，而是基于上一次参数创建一个新生成任务。
+   仓库已包含 `eas.json`，可直接构建。
 
-规则：
+4. **准备应用图标（首次上架建议做）**
 
-- 用户可以从当前结果或历史记录进入“再次编辑”。
-- 再次编辑时自动带回上次的 prompt、模型、尺寸、响应格式和输入图片顺序。
-- 用户修改 prompt 或参数后点击重新生成。
-- 如果旧任务还在请求中，App 自动取消旧任务。
-- 被取消的旧任务不作为有效结果保存。
-- 如果旧任务已经完成，则旧结果继续保留在历史中，新请求成功后保存为新的历史项。
-- 取消记录可以保留状态用于排查，但不能覆盖上一次成功结果，也不能出现在“成功生成结果”列表中。
+   在项目根目录增加资源（至少 1024×1024 图标），并在 `app.json` 中配置，例如：
 
-### 4. 本地历史记录
+   ```json
+   "icon": "./assets/icon.png",
+   "splash": { "image": "./assets/splash.png", "resizeMode": "contain", "backgroundColor": "#071018" }
+   ```
 
-历史记录必须跨 App 重启保留。建议使用本地数据库保存元数据，图片文件保存到 App 私有存储。
+   没有图标时部分构建仍可能通过，但上架商店通常要求完整资源。
 
-每条历史记录至少保存：
+5. **构建安装包**
 
-- `id`
-- `prompt`
-- `model`
-- `baseUrlHost` 或供应商标识
-- `endpoint`
-- `size`
-- `responseFormat`
-- `inputImages`：有序输入图片列表
-- `outputImages`：输出图片本地路径列表
-- `status`：`success`、`failed`、`cancelled`
-- `errorMessage`
-- `createdAt`
+   | 用途 | 命令 | 产物 |
+   |------|------|------|
+   | 内测 / 侧载安装 | `eas build -p android --profile preview` | **APK**，可直接发给用户安装 |
+   | Google Play 上架 | `eas build -p android --profile production` | **AAB**，用于商店提交 |
 
-说明：`cancelled` 表示任务被新请求替换。它可以用于任务状态追踪，但不代表有可回看的生成结果。
+   首次构建会提示创建 **Android Keystore**（用于签名），选让 Expo 托管即可。
 
-安全要求：
+6. **下载与安装**
 
-- API Key 不写入历史记录。
-- API Key 只保存在加密配置中。
-- 日志和错误信息中不能打印完整 API Key。
+   - 构建结束后终端会给出下载链接，或在 https://expo.dev 项目页的 **Builds** 中下载。
+   - APK：传到手机安装（需允许「未知来源」）。
+   - AAB：用 [Google Play Console](https://play.google.com/console) 上传，不能直接在手机安装。
 
-### 5. 图片保存与下载
+7. **（可选）提交商店**
 
-生成成功后，App 自动把输出图片保存到 App 私有存储，避免远程 URL 过期后历史记录无法查看。
+   ```bash
+   eas submit -p android --profile production
+   ```
 
-用户点击“下载”时，再把图片复制到系统相册。这样历史记录不丢失，同时不会默认污染用户相册。
+   需配置 Google Play 服务账号密钥，见 [EAS Submit 文档](https://docs.expo.dev/submit/introduction/)。
 
-## 暂不支持范围
+### 方式二：本地构建（需 Android Studio）
 
-第一版暂不做：
+适合已有 Android 开发环境、希望完全本地出包的情况。
 
-- 后端代理模式
-- 登录、账号、云端同步
-- RAW/DNG、HEIC/HEIF 图片输入
-- 图片蒙版编辑
-- 局部重绘
-- 画布编辑器
-- 多任务并行生成
-- 多供应商高级适配市场
-
-## 核心模块设计
-
-```text
-UI
-  ↓
-ImageGenerationRepository
-  ↓
-OpenAICompatibleImageProvider
-  ↓
-Http Client
+```bash
+npm install
+npx expo prebuild --platform android   # 生成 android/ 原生工程
+cd android
+./gradlew assembleRelease              # Windows: gradlew.bat assembleRelease
 ```
 
-核心模块：
+- Release APK 一般在：`android/app/build/outputs/apk/release/`
+- 本地 Release 需自行配置签名（`android/app/build.gradle` + keystore），见 [Expo 本地构建说明](https://docs.expo.dev/guides/local-app-development/)。
 
-- `ProviderConfig`：保存中转站配置，例如 `baseUrl`、`endpoint`、`model`。
-- `CredentialStore`：加密保存用户 API Key。
-- `ImageInput`：表示一张有顺序的输入图片。
-- `GenerationRequest`：统一文生图和图生图请求。
-- `GenerationTask`：表示当前进行中的任务，支持取消。
-- `GenerationHistory`：本地历史记录实体。
-- `ImageGenerationRepository`：连接 UI、历史、存储和 Provider。
-- `OpenAICompatibleImageProvider`：实现当前已验证的请求和响应格式。
-- `ImageStorage`：保存输出到 App 私有存储，并按需导出到相册。
+### 部署前检查清单
 
-## 生成流程
+- [ ] `app.json` 里 `android.package` 已为最终包名（当前：`com.pageplug.image2forandroid`）
+- [ ] `version` / `versionCode` 按发版递增（可用 `eas.json` 的 `appVersionSource: remote` 在 Expo 控制台管理）
+- [ ] 相册、选图权限文案已在 `app.json` plugins 中配置
+- [ ] 在 **Release 包** 上实测：文生图、参考图、历史、删除、导出相册
+- [ ] API Key 由用户在 App 内填写，无需打进安装包
 
-```mermaid
-flowchart TD
-  UserInput["用户输入 Prompt 和图片"] --> Draft["创建生成草稿"]
-  Draft --> Running["当前进行中任务"]
-  Running -->|"新请求发起"| CancelOld["取消旧请求"]
-  Running --> Provider["OpenAICompatibleImageProvider"]
-  Provider --> Response["解析 url 或 base64"]
-  Response --> AppStorage["保存输出到 App 私有存储"]
-  AppStorage --> HistoryDb["写入本地历史记录"]
-  HistoryDb --> Review["回看历史和重新生成"]
-  Review --> Export["点击下载导出到相册"]
-```
+### 与 Expo Go 的区别
 
-## 错误处理
+| | Expo Go | 独立 APK/AAB |
+|--|---------|----------------|
+| 安装 | 应用商店装 Expo Go，扫码开发 | 直接安装你的 App |
+| 原生能力 | 受限 | 完整（SecureStore、SQLite 等） |
+| 分发 | 仅开发 | 内测、企业、商店均可 |
 
-第一版至少需要识别并展示这些错误：
+## Roadmap
 
-- API Key 为空或无效
-- `baseUrl` 或 `endpoint` 填写错误
-- 模型不存在或模型不支持当前能力
-- 图片格式不支持
-- 图片过大或读取失败
-- 网络超时
-- 中转站限流或余额不足
-- 响应格式不是 `data[].url` 或 `data[].b64_json`
-- 用户发起新请求导致旧请求被取消
+- [ ] 后端代理模式（隐藏 API Key）
+- [ ] 账号登录与云端历史同步
+- [ ] 多供应商 Provider 适配
+- [ ] 图片压缩与超大图自动缩放
+- [ ] HEIC/HEIF、RAW 等更多输入格式
+- [ ] 局部重绘、蒙版与画布编辑
+- [ ] 多任务队列与批量生成
+- [ ] 正式 Android 开发构建（脱离 Expo Go 限制）
 
-## 后续扩展方向
+## License
 
-后续可以在不推翻 MVP 架构的基础上继续增加：
-
-- 后端代理模式
-- 多供应商 Provider Adapter
-- 用户账号与云端历史同步
-- 图片蒙版、局部重绘和画布编辑
-- 更多输入格式，例如 HEIC/HEIF
-- 批量生成和多任务队列
-
-## Android MVP 实施拆分
-
-### 阶段 1：项目骨架与基础配置
-
-- 创建 Android 工程。
-- 使用 Kotlin + Jetpack Compose。
-- 添加网络请求、图片加载、本地数据库和加密存储依赖。
-- 建立基础页面：配置页、生成页、历史页。
-
-### 阶段 2：OpenAI-compatible 文生图跑通
-
-- 实现 `ProviderConfig`。
-- 实现 `CredentialStore`，加密保存 API Key。
-- 实现 `OpenAICompatibleImageProvider`。
-- 支持 `data[].url` 和 `data[].b64_json` 两种响应。
-- 在生成页完成 prompt 输入、请求发送、加载状态、错误展示和图片预览。
-
-### 阶段 3：本地输出保存与历史记录
-
-- 实现 `ImageStorage`，把生成结果保存到 App 私有存储。
-- 实现 `GenerationHistory` 本地数据库。
-- 生成成功后写入历史。
-- 历史页支持回看 prompt、参数和输出图片。
-- 支持点击下载，把 App 私有存储中的图片导出到系统相册。
-
-### 阶段 4：重新生成与任务取消
-
-- 实现 `GenerationTask` 当前任务管理。
-- 新请求发起时自动取消旧请求。
-- 从历史记录进入再次编辑，自动带回上次参数。
-- 旧任务未完成时被取消，不覆盖上一次成功结果。
-- 新任务完成后作为新的历史项保存。
-
-### 阶段 5：多图图生图
-
-- 支持选择多张 PNG、JPG/JPEG 图片。
-- 按用户选择顺序显示“图 1、图 2、图 3”。
-- 将输入图片转换为有序 `ImageInput` 列表。
-- Provider 请求层按顺序传递图片。
-- 如果当前模型或接口不支持多图图生图，展示明确错误。
-
-### 阶段 6：MVP 验收
-
-- 能在无后端情况下独立使用。
-- 能配置中转站 `baseUrl`、`apiKey`、`model`。
-- 能成功完成文生图。
-- 能保存并回看历史记录。
-- 能重新编辑提示词并生成新结果。
-- 能取消未完成旧请求。
-- 能处理多图输入顺序。
-- 能导出生成结果到系统相册。
-
-
+MIT
